@@ -1,131 +1,121 @@
 import streamlit as st
 import json
 import os
+import re
 
-# Postavke stranice
-st.set_page_config(page_title="BrewMaster Pro", layout="wide", page_icon="🍺")
+st.set_page_config(page_title="BrewMaster BeerJSON", layout="wide", page_icon="🍺")
+
+def clean_json_comments(text):
+    """Uklanja // komentare prije parsiranja JSON-a"""
+    return re.sub(r'//.*', '', text)
 
 @st.cache_data
 def load_data():
-    files = {'brew': 'brew_data.json', 'bjcp': 'bjcp_data.json'}
-    loaded_data = {}
-
-    for key, filename in files.items():
-        if not os.path.exists(filename):
-            return f"Datoteka {filename} nije pronađena u repozitoriju!", None, None
-        
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                if not content:
-                    return f"Datoteka {filename} je potpuno prazna!", None, None
-                loaded_data[key] = json.loads(content)
-        except json.JSONDecodeError as e:
-            return f"Greška u formatu {filename}: Možda nije čisti JSON? (Detalji: {e})", None, None
-        except Exception as e:
-            return f"Neočekivana greška kod {filename}: {e}", None, None
-
-    # Ekstrakcija podataka
     try:
-        brew_db = loaded_data['brew']
-        bjcp_db = loaded_data['bjcp']
+        # Učitavanje brew_data.json
+        with open('brew_data.json', 'r', encoding='utf-8') as f:
+            raw_brew = f.read()
+            brew_db = json.loads(clean_json_comments(raw_brew))
         
-        hops = brew_db.get('hops', [])
-        malts = brew_db.get('fermentables', [])
-        
-        # BJCP struktura (prilagođeno za listu ili objekt)
-        if isinstance(bjcp_db, list):
-            styles = bjcp_db
-        else:
-            styles = bjcp_db.get('styles', [])
-            
-        return None, hops, malts, styles
+        # Učitavanje bjcp_data.json
+        with open('bjcp_data.json', 'r', encoding='utf-8') as f:
+            raw_bjcp = f.read()
+            bjcp_db = json.loads(clean_json_comments(raw_bjcp))
+
+        # Ekstrakcija prema BeerJSON 2.01 standardu iz tvog primjera
+        # Putanja: beerjson -> hop_varieties
+        hops = brew_db.get('beerjson', {}).get('hop_varieties', [])
+        # Putanja: beerjson -> fermentables (pretpostavka na temelju standarda)
+        malts = brew_db.get('beerjson', {}).get('fermentables', [])
+        # Putanja: beerjson -> styles
+        styles = bjcp_db.get('beerjson', {}).get('styles', [])
+
+        return hops, malts, styles
     except Exception as e:
-        return f"Greška u strukturi JSON-a: {e}", None, None, None
+        st.error(f"Greška pri čitanju: {e}")
+        return [], [], []
 
-# Izvršavanje učitavanja
-error_msg, hops_list, malts_list, styles_list = load_data()
+hops_list, malts_list, styles_list = load_data()
 
-if error_msg:
-    st.error("❌ " + error_msg)
-    st.info("Savjet: Provjeri jesu li datoteke na GitHubu 'Public' i jesu li ispravno kopirane (mora biti samo tekst u vitičastim zagradama).")
+# --- POMOĆNE FUNKCIJE ZA IZRAČUN ---
+def get_og(active_malts, batch_size, efficiency):
+    total_pts = 0
+    for m in active_malts:
+        # BeerJSON koristi yield/potential. Ako ga nema, koristimo prosjek 75%
+        yield_val = m['info'].get('yield', {}).get('fine_grind', 75.0)
+        pts = (m['weight'] * 2.204) * (yield_val * 0.01 * 384) * (efficiency / 100)
+        total_pts += pts
+    return 1 + (total_pts / (batch_size / 3.785) / 1000)
+
+def get_ibu(active_hops, og, batch_size):
+    total_ibu = 0
+    for h in active_hops:
+        # Putanja u tvom JSON-u: alpha_acid -> value
+        aa = h['info'].get('alpha_acid', {}).get('value', 5.0)
+        utilization = 0.24 # Aproksimacija za 60 min
+        total_ibu += (h['weight'] * aa * utilization * 10) / batch_size
+    return total_ibu
+
+# --- UI ---
+st.title("🍺 BrewMaster BeerJSON Edition")
+
+if not hops_list or not styles_list:
+    st.warning("Provjeri jesu li brew_data.json i bjcp_data.json u istom folderu kao app.py.")
     st.stop()
 
-# --- LOGIKA IZRAČUNA ---
-def calculate_metrics(selected_malts, selected_hops, batch_size, efficiency):
-    total_points = 0
-    total_ebc = 0
-    for m in selected_malts:
-        potential = m['info'].get('yield', 75.0) * 0.01 * 384 
-        points = (m['weight'] * 2.204) * potential * (efficiency / 100)
-        total_points += points
-        total_ebc += (m['weight'] * m['info'].get('color', 0) * 4.25) / batch_size
-    
-    og = 1 + (total_points / (batch_size / 3.785) / 1000)
-    
-    total_ibu = 0
-    for h in selected_hops:
-        alpha = h['info'].get('alpha_acid', 5.0)
-        utilization = 0.24 
-        mg_l_alpha = (alpha / 100) * h['weight'] * 1000 / batch_size
-        total_ibu += mg_l_alpha * utilization
-        
-    return og, total_ibu, total_ebc
-
-# --- KORISNIČKO SUČELJE ---
-st.title("🍺 BrewMaster Web Pro")
-
 with st.sidebar:
-    st.header("⚙️ Parametri sustava")
-    batch_size = st.number_input("Batch Size (L)", value=20.0, step=1.0)
+    st.header("⚙️ Postavke")
+    batch_size = st.number_input("Batch (L)", value=20.0)
     efficiency = st.slider("Efikasnost (%)", 50, 95, 75)
     
-    st.divider()
-    style_names = [s.get('name', 'N/A') for s in styles_list]
-    selected_style_name = st.selectbox("Ciljani BJCP Stil", style_names)
-    style_info = next(s for s in styles_list if s.get('name') == selected_style_name)
+    selected_style_name = st.selectbox("Ciljani Stil", [s['name'] for s in styles_list])
+    style = next(s for s in styles_list if s['name'] == selected_style_name)
 
 col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("🌾 Recept")
-    malt_names = st.multiselect("Dodaj sladove:", [m['name'] for m in malts_list])
-    active_malts = []
-    for name in malt_names:
-        m_data = next(m for m in malts_list if m['name'] == name)
-        w = st.number_input(f"kg - {name}", value=1.0, step=0.1, key=f"w_{name}")
-        active_malts.append({'info': m_data, 'weight': w})
     
-    st.divider()
-    hop_names = st.multiselect("Dodaj hmeljeve:", [h['name'] for h in hops_list])
+    # Sladovi
+    if malts_list:
+        selected_m = st.multiselect("Dodaj sladove:", [m['name'] for m in malts_list])
+        active_malts = []
+        for name in selected_m:
+            m_data = next(m for m in malts_list if m['name'] == name)
+            w = st.number_input(f"kg - {name}", value=1.0, step=0.1, key=f"m_{name}")
+            active_malts.append({'info': m_data, 'weight': w})
+    else:
+        st.info("Nisu pronađeni sladovi (fermentables) u brew_data.json")
+        active_malts = []
+
+    # Hmeljevi
+    selected_h = st.multiselect("Dodaj hmeljeve:", [h['name'] for h in hops_list])
     active_hops = []
-    for name in hop_names:
+    for name in selected_h:
         h_data = next(h for h in hops_list if h['name'] == name)
-        g = st.number_input(f"g - {name}", value=20.0, step=1.0, key=f"g_{name}")
+        g = st.number_input(f"g - {name}", value=20.0, step=1.0, key=f"h_{name}")
         active_hops.append({'info': h_data, 'weight': g})
 
-# Izračun
-og, ibu, ebc = calculate_metrics(active_malts, active_hops, batch_size, efficiency)
+# Rezultati
+og = get_og(active_malts, batch_size, efficiency)
+ibu = get_ibu(active_hops, og, batch_size)
 
 with col2:
-    st.subheader("📊 Rezultati")
-    st.metric("Original Gravity (OG)", f"{og:.3f}")
+    st.subheader("📊 Analiza")
+    st.metric("Gustoća (OG)", f"{og:.3f}")
     
-    stats = style_info.get('stats', {})
-    if stats:
-        og_min = float(stats.get('og', {}).get('low', 1.0))
-        og_max = float(stats.get('og', {}).get('high', 1.1))
-    else:
-        og_min = float(style_info.get('og_min', 1.0))
-        og_max = float(style_info.get('og_max', 1.1))
-    
-    st.progress(min(max((og - 1.030) / (1.080 - 1.030), 0.0), 1.0))
-    st.caption(f"Stil: {og_min:.3f} - {og_max:.3f}")
+    # Izvlačenje min/max OG iz BeerJSON strukture
+    og_min = style.get('original_gravity', {}).get('minimum', {}).get('value', 1.000)
+    og_max = style.get('original_gravity', {}).get('maximum', {}).get('value', 1.100)
+    st.caption(f"Cilj stila: {og_min} - {og_max}")
     
     st.metric("Gorčina (IBU)", f"{int(ibu)}")
-    st.metric("Boja (EBC)", f"{int(ebc)}")
 
     if og_min <= og <= og_max:
-        st.success("U stilu! ✅")
+        st.success("Gustoća OK! ✅")
     else:
-        st.warning("Izvan stila! ⚠️")
+        st.error("Izvan gustoće stila! ❌")
+
+    # Opis stila
+    with st.expander("Više o stilu"):
+        st.write(style.get('overall_impression', 'Nema opisa.'))
