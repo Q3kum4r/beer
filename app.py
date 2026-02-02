@@ -1,121 +1,137 @@
 import streamlit as st
 import json
-import os
 import re
+import os
 
-st.set_page_config(page_title="BrewMaster BeerJSON", layout="wide", page_icon="🍺")
+# --- KONFIGURACIJA ---
+st.set_page_config(page_title="BrewTarget Web", layout="wide", page_icon="🍺")
 
 def clean_json_comments(text):
-    """Uklanja // komentare prije parsiranja JSON-a"""
-    return re.sub(r'//.*', '', text)
+    """Uklanja // komentare i čisti tekst za JSON parser."""
+    text = re.sub(r'//.*', '', text)
+    return text.strip()
 
 @st.cache_data
-def load_data():
-    try:
-        # Učitavanje brew_data.json
-        with open('brew_data.json', 'r', encoding='utf-8') as f:
-            raw_brew = f.read()
-            brew_db = json.loads(clean_json_comments(raw_brew))
-        
-        # Učitavanje bjcp_data.json
-        with open('bjcp_data.json', 'r', encoding='utf-8') as f:
-            raw_bjcp = f.read()
-            bjcp_db = json.loads(clean_json_comments(raw_bjcp))
+def load_brew_data():
+    hops, malts, styles = [], [], []
+    
+    # 1. Učitavanje BJCP Stilova
+    if os.path.exists('bjcp_data.json'):
+        try:
+            with open('bjcp_data.json', 'r', encoding='utf-8') as f:
+                content = clean_json_comments(f.read())
+                data = json.loads(content)
+                styles = data.get('beerjson', {}).get('styles', [])
+        except Exception as e:
+            st.error(f"Greška u bjcp_data.json: {e}")
 
-        # Ekstrakcija prema BeerJSON 2.01 standardu iz tvog primjera
-        # Putanja: beerjson -> hop_varieties
-        hops = brew_db.get('beerjson', {}).get('hop_varieties', [])
-        # Putanja: beerjson -> fermentables (pretpostavka na temelju standarda)
-        malts = brew_db.get('beerjson', {}).get('fermentables', [])
-        # Putanja: beerjson -> styles
-        styles = bjcp_db.get('beerjson', {}).get('styles', [])
+    # 2. Učitavanje Sastojaka (Brew Data)
+    if os.path.exists('brew_data.json'):
+        try:
+            with open('brew_data.json', 'r', encoding='utf-8') as f:
+                content = clean_json_comments(f.read())
+                data = json.loads(content)
+                hops = data.get('beerjson', {}).get('hop_varieties', [])
+                malts = data.get('beerjson', {}).get('fermentables', [])
+        except Exception as e:
+            st.error(f"Greška u brew_data.json: {e}")
+            
+    return hops, malts, styles
 
-        return hops, malts, styles
-    except Exception as e:
-        st.error(f"Greška pri čitanju: {e}")
-        return [], [], []
+# Učitaj baze
+hops_db, malts_db, styles_db = load_brew_data()
 
-hops_list, malts_list, styles_list = load_data()
+# --- INTERFEJS ---
+st.title("🍺 BrewTarget Web Clone")
 
-# --- POMOĆNE FUNKCIJE ZA IZRAČUN ---
-def get_og(active_malts, batch_size, efficiency):
-    total_pts = 0
-    for m in active_malts:
-        # BeerJSON koristi yield/potential. Ako ga nema, koristimo prosjek 75%
-        yield_val = m['info'].get('yield', {}).get('fine_grind', 75.0)
-        pts = (m['weight'] * 2.204) * (yield_val * 0.01 * 384) * (efficiency / 100)
-        total_pts += pts
-    return 1 + (total_pts / (batch_size / 3.785) / 1000)
-
-def get_ibu(active_hops, og, batch_size):
-    total_ibu = 0
-    for h in active_hops:
-        # Putanja u tvom JSON-u: alpha_acid -> value
-        aa = h['info'].get('alpha_acid', {}).get('value', 5.0)
-        utilization = 0.24 # Aproksimacija za 60 min
-        total_ibu += (h['weight'] * aa * utilization * 10) / batch_size
-    return total_ibu
-
-# --- UI ---
-st.title("🍺 BrewMaster BeerJSON Edition")
-
-if not hops_list or not styles_list:
-    st.warning("Provjeri jesu li brew_data.json i bjcp_data.json u istom folderu kao app.py.")
+if not styles_db:
+    st.error("Baza stilova nije učitana. Provjeri bjcp_data.json!")
     st.stop()
 
+# --- SIDEBAR: Oprema i Stil ---
 with st.sidebar:
     st.header("⚙️ Postavke")
-    batch_size = st.number_input("Batch (L)", value=20.0)
+    batch_size = st.number_input("Batch Size (L)", value=20.0, step=1.0)
     efficiency = st.slider("Efikasnost (%)", 50, 95, 75)
     
-    selected_style_name = st.selectbox("Ciljani Stil", [s['name'] for s in styles_list])
-    style = next(s for s in styles_list if s['name'] == selected_style_name)
+    st.divider()
+    style_name = st.selectbox("Ciljani BJCP Stil", [s['name'] for s in styles_db])
+    selected_style = next(s for s in styles_db if s['name'] == style_name)
 
+# --- RECEPT (LIJEVA KOLONA) ---
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("🌾 Recept")
-    
-    # Sladovi
-    if malts_list:
-        selected_m = st.multiselect("Dodaj sladove:", [m['name'] for m in malts_list])
-        active_malts = []
-        for name in selected_m:
-            m_data = next(m for m in malts_list if m['name'] == name)
-            w = st.number_input(f"kg - {name}", value=1.0, step=0.1, key=f"m_{name}")
-            active_malts.append({'info': m_data, 'weight': w})
+    st.subheader("🌾 Grain Bill (Sladovi)")
+    if malts_db:
+        malt_names = st.multiselect("Dodaj sladove:", [m['name'] for m in malts_db])
+        chosen_malts = []
+        for mn in malt_names:
+            m_info = next(m for m in malts_db if m['name'] == mn)
+            w = st.number_input(f"kg: {mn}", value=1.0, step=0.1, key=f"malt_{mn}")
+            chosen_malts.append({'info': m_info, 'weight': w})
     else:
-        st.info("Nisu pronađeni sladovi (fermentables) u brew_data.json")
-        active_malts = []
+        st.warning("Sladovi nisu pronađeni u brew_data.json. Koristim testni Pilsner.")
+        # Fallback ako je brew_data.json nepotpun
+        pils_weight = st.number_input("Testni Pilsner Slad (kg)", value=5.0)
+        chosen_malts = [{'info': {'yield': {'fine_grind': 80.0}, 'color': 3.5}, 'weight': pils_weight}]
 
-    # Hmeljevi
-    selected_h = st.multiselect("Dodaj hmeljeve:", [h['name'] for h in hops_list])
-    active_hops = []
-    for name in selected_h:
-        h_data = next(h for h in hops_list if h['name'] == name)
-        g = st.number_input(f"g - {name}", value=20.0, step=1.0, key=f"h_{name}")
-        active_hops.append({'info': h_data, 'weight': g})
+    st.divider()
+    st.subheader("🌿 Hop Schedule (Hmeljevi)")
+    hop_names = st.multiselect("Dodaj hmeljeve (60 min):", [h['name'] for h in hops_db])
+    chosen_hops = []
+    for hn in hop_names:
+        h_info = next(h for h in hops_db if h['name'] == hn)
+        g = st.number_input(f"grama: {hn}", value=20.0, step=1.0, key=f"hop_{hn}")
+        chosen_hops.append({'info': h_info, 'weight': g})
 
-# Rezultati
-og = get_og(active_malts, batch_size, efficiency)
-ibu = get_ibu(active_hops, og, batch_size)
+# --- KALKULACIJE ---
+def calculate_brew():
+    # OG izračun
+    total_pts = 0
+    for m in chosen_malts:
+        # BeerJSON standard za yield
+        potential = m['info'].get('yield', {}).get('fine_grind', 75.0) * 0.01 * 384
+        pts = (m['weight'] * 2.204) * potential * (efficiency / 100)
+        total_pts += pts
+    
+    og = 1 + (total_pts / (batch_size / 3.785) / 1000)
+    
+    # IBU izračun (Tinseth)
+    ibu = 0
+    for h in chosen_hops:
+        aa = h['info'].get('alpha_acid', {}).get('value', 5.0)
+        utilization = 0.24 # aproksimacija za 60 min
+        ibu += (h['weight'] * aa * utilization * 10) / batch_size
+        
+    return og, ibu
 
+current_og, current_ibu = calculate_brew()
+
+# --- REZULTATI (DESNA KOLONA) ---
 with col2:
     st.subheader("📊 Analiza")
-    st.metric("Gustoća (OG)", f"{og:.3f}")
     
-    # Izvlačenje min/max OG iz BeerJSON strukture
-    og_min = style.get('original_gravity', {}).get('minimum', {}).get('value', 1.000)
-    og_max = style.get('original_gravity', {}).get('maximum', {}).get('value', 1.100)
-    st.caption(f"Cilj stila: {og_min} - {og_max}")
+    # OG Prikaz
+    og_min = selected_style.get('original_gravity', {}).get('minimum', {}).get('value', 1.000)
+    og_max = selected_style.get('original_gravity', {}).get('maximum', {}).get('value', 1.100)
     
-    st.metric("Gorčina (IBU)", f"{int(ibu)}")
-
-    if og_min <= og <= og_max:
-        st.success("Gustoća OK! ✅")
+    st.metric("Gustoća (OG)", f"{current_og:.3f}")
+    if og_min <= current_og <= og_max:
+        st.success(f"U stilu ({og_min}-{og_max}) ✅")
     else:
-        st.error("Izvan gustoće stila! ❌")
+        st.error(f"Izvan stila ({og_min}-{og_max}) ❌")
 
-    # Opis stila
-    with st.expander("Više o stilu"):
-        st.write(style.get('overall_impression', 'Nema opisa.'))
+    # IBU Prikaz
+    ibu_min = selected_style.get('international_bitterness_units', {}).get('minimum', {}).get('value', 0)
+    ibu_max = selected_style.get('international_bitterness_units', {}).get('maximum', {}).get('value', 100)
+    
+    st.metric("Gorčina (IBU)", f"{int(current_ibu)}")
+    if ibu_min <= current_ibu <= ibu_max:
+        st.success(f"U stilu ({int(ibu_min)}-{int(ibu_max)}) ✅")
+    else:
+        st.error(f"Izvan stila ({int(ibu_min)}-{int(ibu_max)}) ❌")
+
+    st.divider()
+    with st.expander("Opis stila"):
+        st.write(selected_style.get('overall_impression', 'Nema opisa.'))
