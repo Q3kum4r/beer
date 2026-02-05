@@ -7,7 +7,7 @@ import os
 st.set_page_config(page_title="BrewMaster Pro", layout="wide", page_icon="🍺")
 
 def clean_json_comments(text):
-    """Uklanja // komentare iz datoteka."""
+    """Uklanja // komentare iz JSON-a."""
     text = re.sub(r'//.*', '', text)
     return text.strip()
 
@@ -29,9 +29,7 @@ def load_all_databases():
             with open('brew_data.json', 'r', encoding='utf-8') as f:
                 content = clean_json_comments(f.read())
                 full_data = json.loads(content).get('beerjson', {})
-                # Hmeljevi
                 hops = full_data.get('hop_varieties', [])
-                # KVASCI - prema tvom isječku ključ je "cultures"
                 yeasts = full_data.get('cultures', [])
         except: pass
 
@@ -39,7 +37,6 @@ def load_all_databases():
     if os.path.exists('fermentables_data.json'):
         try:
             with open('fermentables_data.json', 'r', encoding='utf-8') as f:
-                # Ovdje pretpostavljamo da nema komentara jer je bsmx konverzija
                 data = json.load(f).get('beerjson', {})
                 malts = data.get('fermentables', [])
         except: pass
@@ -94,37 +91,49 @@ with tab_recipe:
             m_info = next(m for m in malts_db if m['name'] == name)
             c1, c2 = st.columns([3, 1])
             with c1: st.write(f"**{name}** ({m_info.get('color', 0)} EBC)")
-            with c2: w = st.number_input(f"kg", value=1.0, step=0.1, key=f"m_{name}", label_visibility="collapsed")
+            with c2: w = st.number_input(f"kg", value=1.0, min_value=0.0, step=0.1, key=f"m_{name}", label_visibility="collapsed")
             active_malts.append({'info': m_info, 'weight': w})
 
         st.divider()
         # SEKCIJA ZA HMELJEVE
         st.subheader("🌿 Hmeljevi (g)")
-        h_selection = st.multiselect("Dodaj hmeljeve (60 min):", [h['name'] for h in hops_db])
+        h_selection = st.multiselect("Dodaj hmeljeve:", [h['name'] for h in hops_db])
         active_hops = []
         for name in h_selection:
             h_info = next(h for h in hops_db if h['name'] == name)
-            aa = h_info.get('alpha_acid', {}).get('value', 5.0)
+            aa_data = h_info.get('alpha_acid', 5.0)
+            aa = aa_data.get('value', 5.0) if isinstance(aa_data, dict) else aa_data
             c1, c2 = st.columns([3, 1])
             with c1: st.write(f"**{name}** ({aa}% AA)")
-            with c2: g = st.number_input(f"g", value=20.0, step=1.0, key=f"h_{name}", label_visibility="collapsed")
+            with c2: g = st.number_input(f"g", value=20.0, min_value=0.0, step=1.0, key=f"h_{name}", label_visibility="collapsed")
             active_hops.append({'info': h_info, 'weight': g, 'aa': aa})
 
         st.divider()
-        # SEKCIJA ZA KVASAC
+        # SEKCIJA ZA KVASAC (Redizajnirano)
         st.subheader("🧫 Kvasac")
         if yeasts_db:
-            y_name = st.selectbox("Odaberi kvasac:", [y['name'] for y in yeasts_db])
-            selected_yeast = next(y for y in yeasts_db if y['name'] == y_name)
+            # 1. Odabir proizvođača
+            producers = sorted(list(set([y.get('producer', 'Unknown') for y in yeasts_db])))
+            selected_producer = st.selectbox("Proizvođač:", producers)
             
-            # Izvlačenje atenuacije iz cultures -> attenuation_range
+            # 2. Odabir Product ID-a (filtrirano po proizvođaču)
+            filtered_yeasts = [y for y in yeasts_db if y.get('producer') == selected_producer]
+            yeast_ids = [y.get('product_id', 'N/A') for y in filtered_yeasts]
+            selected_id = st.selectbox("Product ID (Vrsta):", yeast_ids)
+            
+            # Dohvaćanje podataka o odabranom kvascu
+            selected_yeast = next(y for y in filtered_yeasts if y.get('product_id') == selected_id)
+            
+            # Prikaz naziva (stila) usputno
+            st.caption(f"Preporučeni stilovi: **{selected_yeast.get('name', 'N/A')}**")
+            
+            # Atenuacija
             att_range = selected_yeast.get('attenuation_range', {})
-            att_min = att_range.get('minimum', {}).get('value', 70)
-            att_max = att_range.get('maximum', {}).get('value', 80)
+            att_min = float(att_range.get('minimum', {}).get('value', 70))
+            att_max = float(att_range.get('maximum', {}).get('value', 80))
             attenuation = (att_min + att_max) / 2
-            st.caption(f"Prosječna atenuacija: {attenuation}% (Raspon: {att_min}-{att_max}%)")
         else:
-            st.warning("Kvasci nisu pronađeni. Koristim zadano 75%")
+            st.warning("Kvasci nisu učitani. Koristim 75% atenuacije.")
             attenuation = 75.0
 
     # --- IZRAČUN ---
@@ -132,8 +141,8 @@ with tab_recipe:
     for m in active_malts:
         y_val = m['info'].get('yield', 75.0)
         if isinstance(y_val, dict): y_val = y_val.get('fine_grind', 75.0)
-        pts += (m['weight'] * 2.204) * (y_val * 0.01 * 384) * (efficiency / 100)
-        mcu += (m['weight'] * 2.204 * m['info'].get('color', 0)) / (batch_size / 3.785)
+        pts += (m['weight'] * 2.204) * (float(y_val) * 0.01 * 384) * (efficiency / 100)
+        mcu += (m['weight'] * 2.204 * float(m['info'].get('color', 0))) / (batch_size / 3.785)
     
     og = 1 + (pts / (batch_size / 3.785) / 1000) if batch_size > 0 else 1.0
     fg = 1 + ((og - 1) * (1 - attenuation / 100))
@@ -149,8 +158,8 @@ with tab_recipe:
     with col2:
         st.subheader("📊 Analiza")
         st.metric("Alkohola (ABV)", f"{abv:.1f} %")
-        st.metric("Gustoća (OG)", f"{og:.3f}")
-        st.metric("Završna (FG)", f"{fg:.3f}")
+        st.metric("Original Gravity (OG)", f"{og:.3f}")
+        st.metric("Final Gravity (FG)", f"{fg:.3f}")
         st.metric("Gorčina (IBU)", f"{int(total_ibu)}")
         st.metric("Boja (EBC)", f"{ebc}")
         
@@ -162,8 +171,21 @@ with tab_recipe:
             og_min = float(selected_style.get('original_gravity', {}).get('minimum', {}).get('value', 1.0))
             og_max = float(selected_style.get('original_gravity', {}).get('maximum', {}).get('value', 1.1))
             if og_min <= og <= og_max: st.success("Gustoća OK! ✅")
-            else: st.warning(f"OG van stila ({og_min}-{og_max})")
+            else: st.warning(f"OG van stila ({og_min:.3f}-{og_max:.3f})")
 
 with tab_tools:
     st.subheader("🛠️ Pomoćni alati")
-    # (Strike water i Priming sugar ostaju ovdje)
+    t1, t2 = st.columns(2)
+    with t1:
+        st.info("🌡️ Strike Water Temperature")
+        t_mash = st.number_input("Ciljana temp. ukomljavanja (°C)", value=67.0)
+        t_grain = st.number_input("Temperatura slada (°C)", value=20.0)
+        r_mash = st.number_input("Omjer voda/slad (L/kg)", value=3.0)
+        strike = (0.41 / r_mash) * (t_mash - t_grain) + t_mash
+        st.success(f"Zagrij vodu na: **{strike:.1f} °C**")
+    with t2:
+        st.info("🍬 Karbonizacija (Dekstroza)")
+        vol = st.number_input("Ciljani volumen CO2", value=2.4, step=0.1)
+        t_beer = st.number_input("Temperatura piva pri punjenju (°C)", value=20.0)
+        sugar = (batch_size * (vol - 3.0378 + (0.050062 * t_beer) - (0.00026555 * t_beer**2)) * 4.0)
+        st.success(f"Dodaj: **{max(0, int(sugar))} g** dekstroze")
