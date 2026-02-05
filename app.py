@@ -13,7 +13,7 @@ def clean_json_comments(text):
 
 @st.cache_data
 def load_all_databases():
-    hops, malts, styles = [], [], []
+    hops, malts, styles, yeasts = [], [], [], []
     # 1. BJCP Stilovi
     if os.path.exists('bjcp_data.json'):
         try:
@@ -21,12 +21,14 @@ def load_all_databases():
                 data = json.loads(clean_json_comments(f.read()))
                 styles = data.get('beerjson', {}).get('styles', [])
         except: pass
-    # 2. Hmeljevi
+    # 2. Hmeljevi i Kvasci (brew_data.json)
     if os.path.exists('brew_data.json'):
         try:
             with open('brew_data.json', 'r', encoding='utf-8') as f:
-                data = json.loads(clean_json_comments(f.read()))
+                content = clean_json_comments(f.read())
+                data = json.loads(content)
                 hops = data.get('beerjson', {}).get('hop_varieties', [])
+                yeasts = data.get('beerjson', {}).get('yeasts', [])
         except: pass
     # 3. Sladovi
     if os.path.exists('fermentables_data.json'):
@@ -35,13 +37,12 @@ def load_all_databases():
                 data = json.load(f)
                 malts = data.get('beerjson', {}).get('fermentables', [])
         except: pass
-    return hops, malts, styles
+    return hops, malts, styles, yeasts
 
-hops_db, malts_db, styles_db = load_all_databases()
+hops_db, malts_db, styles_db, yeasts_db = load_all_databases()
 
 # --- POMOĆNA FUNKCIJA ZA BOJU ---
 def ebc_to_hex(ebc):
-    """Pretvara EBC vrijednost u HEX boju za grafički prikaz."""
     srm = ebc * 0.508
     if srm < 2: return "#FFE699"
     if srm < 5: return "#FFD878"
@@ -78,8 +79,9 @@ with tab_recipe:
     col1, col2 = st.columns([2, 1])
     
     with col1:
+        # SEKCIJA ZA SLADOVE
         st.subheader("🌾 Sladovi (kg)")
-        m_selection = st.multiselect("Dodaj sastojke:", [m['name'] for m in malts_db])
+        m_selection = st.multiselect("Dodaj sladove u recept:", [m['name'] for m in malts_db])
         active_malts = []
         for name in m_selection:
             m_info = next(m for m in malts_db if m['name'] == name)
@@ -89,8 +91,9 @@ with tab_recipe:
             active_malts.append({'info': m_info, 'weight': w})
 
         st.divider()
+        # SEKCIJA ZA HMELJEVE
         st.subheader("🌿 Hmeljevi (g)")
-        h_selection = st.multiselect("Dodaj hmeljeve:", [h['name'] for h in hops_db])
+        h_selection = st.multiselect("Dodaj hmeljeve (60 min boil):", [h['name'] for h in hops_db])
         active_hops = []
         for name in h_selection:
             h_info = next(h for h in hops_db if h['name'] == name)
@@ -99,6 +102,17 @@ with tab_recipe:
             with c1: st.write(f"**{name}** ({aa}% AA)")
             with c2: g = st.number_input(f"g", value=20.0, step=1.0, key=f"h_{name}", label_visibility="collapsed")
             active_hops.append({'info': h_info, 'weight': g})
+
+        st.divider()
+        # SEKCIJA ZA KVASAC
+        st.subheader("🧫 Kvasac")
+        y_name = st.selectbox("Odaberi kvasac:", [y['name'] for y in yeasts_db] if yeasts_db else ["N/A"])
+        if yeasts_db and y_name != "N/A":
+            selected_yeast = next(y for y in yeasts_db if y['name'] == y_name)
+            attenuation = selected_yeast.get('attenuation', {}).get('value', 75.0)
+            st.caption(f"Prosječna atenuacija kvasca: {attenuation}%")
+        else:
+            attenuation = 75.0
 
     # --- IZRAČUN REZULTATA ---
     pts = 0
@@ -110,6 +124,14 @@ with tab_recipe:
         mcu += (m['weight'] * 2.204 * m['info'].get('color', 0)) / (batch_size / 3.785)
     
     og = 1 + (pts / (batch_size / 3.785) / 1000) if batch_size > 0 else 1.0
+    
+    # Procjena FG (Final Gravity) na temelju atenuacije kvasca
+    fg = 1 + ((og - 1) * (1 - attenuation / 100))
+    
+    # Izračun ABV (Alcohol By Volume)
+    abv = (og - fg) * 131.25
+    
+    # Izračun Boje i Gorčine
     srm = 1.4922 * (mcu ** 0.6859) if mcu > 0 else 0
     ebc = int(srm * 1.97)
 
@@ -122,43 +144,48 @@ with tab_recipe:
 
     with col2:
         st.subheader("📊 Analiza")
-        st.metric("Gustoća (OG)", f"{og:.3f}")
+        st.metric("Alkohola (ABV)", f"{abv:.1f} %")
+        st.metric("Original Gravity (OG)", f"{og:.3f}")
+        st.metric("Final Gravity (FG)", f"{fg:.3f}")
         st.metric("Gorčina (IBU)", f"{int(total_ibu)}")
         st.metric("Boja (EBC)", f"{ebc}")
         
         # GRAFIČKI PRIKAZ BOJE
         beer_hex = ebc_to_hex(ebc)
         st.markdown(f"""
-            <div style="width: 100%; height: 80px; background-color: {beer_hex}; 
-            border-radius: 10px; border: 2px solid #333; display: flex; 
-            align-items: center; justify-content: center;">
-                <span style="color: {'white' if ebc > 30 else 'black'}; font-weight: bold;">PRIKAZ BOJE PIVA</span>
+            <div style="width: 100%; height: 60px; background-color: {beer_hex}; 
+            border-radius: 8px; border: 2px solid #333; display: flex; 
+            align-items: center; justify-content: center; margin-top: 10px;">
+                <span style="color: {'white' if ebc > 30 else 'black'}; font-weight: bold; font-size: 14px;">BOJA PIVA</span>
             </div>
             """, unsafe_allow_html=True)
         
         st.divider()
-        og_min = selected_style.get('original_gravity', {}).get('minimum', {}).get('value', 1.0)
-        og_max = selected_style.get('original_gravity', {}).get('maximum', {}).get('value', 1.1)
-        if og_min <= og <= og_max: st.success("Gustoća u stilu! ✅")
-        else: st.warning("Gustoća izvan stila! ⚠️")
+        og_min = float(selected_style.get('original_gravity', {}).get('minimum', {}).get('value', 1.0))
+        og_max = float(selected_style.get('original_gravity', {}).get('maximum', {}).get('value', 1.1))
+        abv_min = float(selected_style.get('alcohol_by_volume', {}).get('minimum', {}).get('value', 0))
+        abv_max = float(selected_style.get('alcohol_by_volume', {}).get('maximum', {}).get('value', 15))
+
+        if og_min <= og <= og_max: st.success("Gustoća (OG) OK! ✅")
+        else: st.warning(f"OG izvan stila! (Cilj: {og_min}-{og_max})")
+        
+        if abv_min <= abv <= abv_max: st.success("Postotak alkohola OK! ✅")
+        else: st.warning(f"ABV izvan stila! (Cilj: {abv_min}-{abv_max}%)")
 
 with tab_tools:
-    st.subheader("🛠️ Brewing Tools")
-    
+    st.subheader("🛠️ Pomoćni alati")
     c1, c2 = st.columns(2)
     with c1:
-        st.info("🌡️ Strike Water Temperature")
+        st.info("🌡️ Temperatura vode za ukomljavanje")
         target_mash = st.number_input("Ciljana temperatura ukomljavanja (°C)", value=67.0)
         grain_temp = st.number_input("Temperatura slada (°C)", value=20.0)
         ratio = st.number_input("Omjer voda/slad (L/kg)", value=3.0)
-        # Formula: Ts = (0.41 / R) * (T2 - T1) + T2
         strike_temp = (0.41 / ratio) * (target_mash - grain_temp) + target_mash
         st.success(f"Zagrij vodu na: **{strike_temp:.1f} °C**")
 
     with c2:
-        st.info("🍬 Priming Sugar (Dextrose)")
+        st.info("🍬 Karbonizacija u boci (Dekstroza)")
         co2_vol = st.number_input("Ciljani volumen CO2", value=2.4, step=0.1)
-        temp_beer = st.number_input("Temperatura piva pri punjenju (°C)", value=20.0)
-        # Pojednostavljena formula za gramažu dekstroze
+        temp_beer = st.number_input("Temperatura piva (°C)", value=20.0)
         sugar_needed = (batch_size * (co2_vol - 3.0378 + (0.050062 * temp_beer) - (0.00026555 * temp_beer**2)) * 4.0)
-        st.success(f"Dodaj: **{max(0, int(sugar_needed))} g** dekstroze")
+        st.success(f"Dodaj: **{max(0, int(sugar_needed))} g** šećera")
