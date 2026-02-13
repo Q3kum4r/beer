@@ -12,9 +12,6 @@ st.markdown("""
 <style>
     .bar-bg { width: 100%; background-color: #e0e0e0; border-radius: 10px; height: 20px; margin-top: 5px; }
     .bar-fill { height: 100%; border-radius: 10px; text-align: right; padding-right: 5px; color: white; font-weight: bold; line-height: 20px; font-size: 12px; }
-    .metric-box { border: 1px solid #ddd; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 10px; }
-    .metric-label { font-size: 12px; color: #666; }
-    .metric-value { font-size: 20px; font-weight: bold; color: #333; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -26,17 +23,14 @@ def clean_json_comments(text):
 def load_data():
     hops, malts, styles, yeasts = [], [], [], []
     try:
-        # BJCP
         if os.path.exists('bjcp_data.json'):
             with open('bjcp_data.json', 'r', encoding='utf-8') as f:
                 styles = json.loads(clean_json_comments(f.read())).get('beerjson', {}).get('styles', [])
-        # Hmelj i Kvasac
         if os.path.exists('brew_data.json'):
             with open('brew_data.json', 'r', encoding='utf-8') as f:
                 d = json.loads(clean_json_comments(f.read())).get('beerjson', {})
                 hops = d.get('hop_varieties', [])
                 yeasts = d.get('cultures', [])
-        # Sladovi
         if os.path.exists('fermentables_data.json'):
             with open('fermentables_data.json', 'r', encoding='utf-8') as f:
                 malts = json.load(f).get('beerjson', {}).get('fermentables', [])
@@ -58,12 +52,10 @@ with st.sidebar:
     style_list = [s['name'] for s in styles_db] if styles_db else ["N/A"]
     target_style_name = st.selectbox("BJCP Stil", style_list)
     
-    # Pronađi podatke o odabranom stilu
     style_data = next((s for s in styles_db if s['name'] == target_style_name), {})
     
     if style_data:
         st.subheader("🎯 Ciljane vrijednosti")
-        # Izvlačenje limita
         s_og_min = float(style_data.get('original_gravity', {}).get('minimum', {}).get('value', 1.0))
         s_og_max = float(style_data.get('original_gravity', {}).get('maximum', {}).get('value', 1.1))
         s_ibu_min = float(style_data.get('international_bitterness_units', {}).get('minimum', {}).get('value', 0))
@@ -73,7 +65,6 @@ with st.sidebar:
         s_abv_min = float(style_data.get('alcohol_by_volume', {}).get('minimum', {}).get('value', 0))
         s_abv_max = float(style_data.get('alcohol_by_volume', {}).get('maximum', {}).get('value', 12))
 
-        # Prikaz ciljeva u sidebaru
         st.info(f"""
         **OG:** {s_og_min:.3f} - {s_og_max:.3f}
         **IBU:** {int(s_ibu_min)} - {int(s_ibu_max)}
@@ -81,7 +72,6 @@ with st.sidebar:
         **Boja:** {int(s_col_min)} - {int(s_col_max)} SRM
         """)
     else:
-        # Defaultne vrijednosti ako stil nije odabran
         s_og_min, s_og_max = 1.0, 1.1
         s_ibu_min, s_ibu_max = 0, 100
         s_col_min, s_col_max = 0, 40
@@ -93,17 +83,18 @@ with st.sidebar:
     efficiency = st.number_input("Efikasnost (%)", 70.0, step=5.0)
     boil_time = st.number_input("Vrijeme kuhanja (min)", 60, step=10)
 
-# --- GLAVNI EKRAN: UNOS ---
+# --- GLAVNI EKRAN ---
 with st.expander("📝 Uređivanje Recepta", expanded=True):
     c1, c2, c3 = st.columns([1, 1, 1])
     
     # 1. SLADOVI
     with c1:
         st.subheader("🌾 Sladovi")
-        sel_malt = st.selectbox("Odaberi slad:", [m['name'] for m in malts_db] if malts_db else [], key="sel_m")
+        sel_malt = st.selectbox("Dodaj slad:", [m['name'] for m in malts_db] if malts_db else [], key="sel_m")
         if st.button("Dodaj Slad"):
             m_dat = next((m for m in malts_db if m['name'] == sel_malt), None)
             if m_dat:
+                # Interni ključevi ostaju na Engleskom zbog logike
                 st.session_state.recipe_malts.append({
                     "Name": m_dat['name'],
                     "Type": str(m_dat.get('type', 'Grain')),
@@ -114,6 +105,7 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
         
         if st.session_state.recipe_malts:
             df_m = pd.DataFrame(st.session_state.recipe_malts)
+            # Ovdje mapiramo Engleske ključeve na Hrvatske naslove
             edited_m = st.data_editor(
                 df_m, 
                 num_rows="dynamic", 
@@ -123,7 +115,7 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
                     "Name": st.column_config.TextColumn("Naziv", disabled=True),
                     "Type": st.column_config.TextColumn("Tip", disabled=True),
                     "Amount (kg)": st.column_config.NumberColumn("Količina (kg)", format="%.2f", min_value=0, step=0.1),
-                    "Yield (%)": st.column_config.NumberColumn("Iskoristivost (%)", format="%.1f %%", disabled=True),
+                    "Yield (%)": st.column_config.NumberColumn("Iskoristivost", format="%.1f %%", disabled=True),
                     "Color (EBC)": st.column_config.NumberColumn("Boja (EBC)", format="%.1f", disabled=True)
                 }
             )
@@ -132,7 +124,7 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
     # 2. HMELJEVI
     with c2:
         st.subheader("🌿 Hmeljevi")
-        sel_hop = st.selectbox("Odaberi hmelj:", [h['name'] for h in hops_db] if hops_db else [], key="sel_h")
+        sel_hop = st.selectbox("Dodaj hmelj:", [h['name'] for h in hops_db] if hops_db else [], key="sel_h")
         if st.button("Dodaj Hmelj"):
             h_dat = next((h for h in hops_db if h['name'] == sel_hop), None)
             if h_dat:
@@ -143,7 +135,7 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
                     "Amount (g)": 20.0, 
                     "Time": 60, 
                     "Alpha": float(aa), 
-                    "Use": "Kuhanje"
+                    "Use": "Kuhanje" # Default vrijednost na hrvatskom
                 })
 
         if st.session_state.recipe_hops:
@@ -157,8 +149,8 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
                     "Name": st.column_config.TextColumn("Naziv", disabled=True),
                     "Amount (g)": st.column_config.NumberColumn("Količina (g)", format="%d"),
                     "Time": st.column_config.NumberColumn("Vrijeme (min)"),
-                    "Alpha": st.column_config.NumberColumn("Alfa kis. (%)", format="%.1f %%"),
-                    "Use": st.column_config.SelectboxColumn("Upotreba", options=["Kuhanje", "Suho hmeljenje", "Ukomljavanje", "Whirlpool"])
+                    "Alpha": st.column_config.NumberColumn("Alfa (%)", format="%.1f %%"),
+                    "Use": st.column_config.SelectboxColumn("Namjena", options=["Kuhanje", "Dry Hop", "Mash", "Whirlpool"])
                 }
             )
             st.session_state.recipe_hops = edited_h.to_dict('records')
@@ -170,7 +162,7 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
             prods = sorted(list(set([y.get('producer', '?') for y in yeasts_db])))
             s_prod = st.selectbox("Proizvođač", prods)
             av_y = [y for y in yeasts_db if y.get('producer') == s_prod]
-            s_id = st.selectbox("Soj (Vrsta)", [y.get('product_id', y.get('name')) for y in av_y])
+            s_id = st.selectbox("Soj", [y.get('product_id', y.get('name')) for y in av_y])
             curr_y = next((y for y in av_y if y.get('product_id') == s_id or y.get('name') == s_id), {})
             
             att_range = curr_y.get('attenuation_range', {})
@@ -181,18 +173,22 @@ with st.expander("📝 Uređivanje Recepta", expanded=True):
         else:
             attenuation = 75.0
 
-# --- IZRAČUN ---
+# --- IZRAČUN (KORISTI INTERNE ENGLESKE KLJUČEVE) ---
 pts = 0
 mcu = 0
 for m in st.session_state.recipe_malts:
+    # Ovdje i dalje pristupamo engleskim ključevima jer su oni u session_state-u
     w = float(m['Amount (kg)'])
     y = float(m['Yield (%)'])
     c = float(m['Color (EBC)'])
-    # Detekcija ekstrakta
+    
     m_type_str = str(m.get('Type', '')).lower()
     m_name_str = str(m.get('Name', '')).lower()
+    
+    # Prepoznavanje ekstrakta
     is_ext = 'extract' in m_type_str or 'sugar' in m_type_str or 'extract' in m_name_str
     eff = 100 if is_ext else efficiency
+    
     pts += w * (y / 100) * 384 * (eff / 100)
     mcu += (w * c) / batch_size if batch_size else 0
 
@@ -204,11 +200,12 @@ srm = ebc * 0.508
 
 ibu = 0
 for h in st.session_state.recipe_hops:
-    # Ažurirano: Provjerava hrvatski naziv "Kuhanje"
-    if h['Use'] == 'Kuhanje' or h['Use'] == 'Boil':
+    # Provjeravamo hrvatski naziv "Kuhanje" ili engleski "Boil"
+    use_val = h.get('Use', 'Kuhanje')
+    if use_val == 'Kuhanje' or use_val == 'Boil':
         w = float(h['Amount (g)'])
-        a = float(h['Alpha'])
-        t = float(h['Time'])
+        a = float(h.get('Alpha', 0))
+        t = float(h.get('Time', 0))
         if batch_size > 0:
             gf = 1.65 * (0.000125 ** (og - 1))
             tf = (1 - 2.71828 ** (-0.04 * t)) / 4.15
@@ -218,14 +215,12 @@ for h in st.session_state.recipe_hops:
 st.divider()
 st.subheader(f"📊 Analiza: {target_style_name}")
 
-# Funkcija za crtanje bara s markerom
 def style_meter(label, value, min_v, max_v, unit):
-    # Logika boje
     if min_v <= value <= max_v:
-        status_color = "#28a745" # Zeleno
+        status_color = "#28a745"
         status_icon = "✅"
     else:
-        status_color = "#dc3545" # Crveno
+        status_color = "#dc3545"
         status_icon = "⚠️"
         
     range_span = max_v - min_v
@@ -245,12 +240,10 @@ def style_meter(label, value, min_v, max_v, unit):
             <span style="font-weight:bold;">{label} {status_icon}</span>
             <span style="font-weight:bold; color:{status_color}">{value:.3f} {unit}</span>
         </div>
-        
         <div style="position:relative; width:100%; height:20px; background:#eee; border-radius:10px;">
             <div style="position:absolute; left:{style_start}%; width:{style_width}%; height:100%; background:rgba(40, 167, 69, 0.3); border-left:2px solid #28a745; border-right:2px solid #28a745;"></div>
             <div style="position:absolute; left:{pct}%; width:4px; height:120%; top:-10%; background:black; border-radius:2px; z-index:10;"></div>
         </div>
-        
         <div style="display:flex; justify-content:space-between; font-size:11px; color:#666; margin-top:2px;">
             <span>Min: {min_v}</span>
             <span>Max: {max_v}</span>
@@ -261,7 +254,7 @@ def style_meter(label, value, min_v, max_v, unit):
 c1, c2, c3 = st.columns(3)
 with c1:
     style_meter("Početna gustoća (OG)", og, s_og_min, s_og_max, "")
-    style_meter("Završna gustoća (FG)", fg, 1.008, 1.015, "")
+    style_meter("Završna gustoća (FG)", fg, 1.008, 1.015, "") # FG je često procjena
 
 with c2:
     style_meter("Gorčina (IBU)", ibu, s_ibu_min, s_ibu_max, "IBU")
@@ -279,7 +272,6 @@ with c3:
         return "#260000"
     
     beer_color = get_hex(ebc)
-    # Prikazujemo boju u SRM jer su BJCP podaci često u SRM, ali labela može biti Boja
     style_meter("Boja (SRM)", srm, s_col_min, s_col_max, "SRM")
     st.markdown(f'<div style="width:100%; height:30px; background:{beer_color}; border-radius:5px; border:1px solid #999; margin-top:-10px;"></div>', unsafe_allow_html=True)
     st.caption(f"Ekvivalent u EBC: {ebc:.1f}")
