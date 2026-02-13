@@ -2,230 +2,41 @@
   "beerjson": {
     "version": 2.01,
     "fermentables": [
-      {
-        "name": "Amber Dry Extract",
-        "yield": 95.0,
-        "color": 12.5,
-        "type": "Extract",
-        "notes": "Amber colored dry malt extract, for general purpose use. Use in any medium to dark colored beer. Examples: Ales, Marzens, Amber Ale, India Pale Ale"
-      },
-      {
-        "name": "Amber Liquid Extract",
-        "yield": 78.0,
-        "color": 12.5,
-        "type": "Extract",
-        "notes": "Unhopped amber color liquid extract. Use as a base malt for any Ale. Examples: Amber ale, India Pale Ale, Munich style, Marzen, Bock"
-      },
-      {
-        "name": "Barley Hulls",
-        "yield": 0.0,
-        "color": 0.0,
-        "type": "Adjunct",
-        "notes": "Hulls are introduced to improve the speed of lautering when making high gravity or high adjunct beers. Hulls are neutral in flavor, body and color, and are inert. Good for wheat beers, Wits, and others that have high protein mashes."
-      },
-      {
-        "name": "Barley, Torrefied",
-        "yield": 79.0,
-        "color": 1.7,
-        "type": "Grain",
-        "notes": "Raw barley that has been popped open to open kernels. Used in place of raw barley for faster conversion and higher yields. High in haze producing protein"
-      },
-      {
-        "name": "Black (Patent) Malt",
-        "yield": 55.0,
-        "color": 500.0,
-        "type": "Grain",
-        "notes": "Dark color and dry roasted flavor characteristic of Stouts and Porters. Use for: Coloring in small amounts, or flavoring of Stouts and Porters in larger amounts."
-      },
-      {
-        "name": "Black Barley (Stout)",
-        "yield": 55.0,
-        "color": 500.0,
-        "type": "Grain",
-        "notes": "Unmalted barley roasted at high temperature to create a dry, coffee like flavor. Imparts a sharp acrid flavor characteristic of dry stouts. Gives dryness to a stout or porter -- much more so than regular Roasted Barley"
-      },
-      {
-        "name": "Brown Sugar, Dark",
-        "yield": 100.0,
-        "color": 50.0,
-        "type": "Sugar",
-        "notes": "Imparts a rich sweet flavor. Used in Scottish ales, holiday ales and some old ales."
-      },
-      {
-        "name": "Brown Sugar, Light",
-        "yield": 100.0,
-        "color": 8.0,
-        "type": "Sugar",
-        "notes": "Imparts a rich sweet flavor. Used in Scottish ales, holiday ales and some old ales."
-      },
-      {
-        "name": "Candi Sugar, Amber",
-        "yield": 78.3,
-        "color": 75.0,
-        "type": "Sugar",
-        "notes": "Crystalized Candi Sugar (Sucrose) used in many Belgian Tripels, Dubbels, and holiday ales. Adds head retention and sweet aroma to beer. Darker variants also add color."
-      },
-      {
-        "name": "Candi Sugar, Clear",
-        "yield": 78.3,
-        "color": 0.5,
-        "type": "Sugar",
-        "notes": "Crystalized Candi Sugar (Sucrose) used in many Belgian Tripels, Dubbels, and holiday ales. Adds head retention and sweet aroma to beer. Darker variants also add color."
-      },
-      {
-        "name": "Candi Sugar, Dark",
-        "yield": 78.3,
-        "color": 275.0,
-        "type": "Sugar",
-        "notes": "Crystalized Candi Sugar (Sucrose) used in many Belgian Tripels, Dubbels, and holiday ales. Adds head retention and sweet aroma to beer. Darker variants also add color."
-      },
-      {
-        "name": "Cane (Beet) Sugar",
-        "yield": 100.0,
-        "color": 0.0,
-        "type": "Sugar",
-        "notes": "Common household baking sugar. Lightens flavor and body of beer. Can contribute a cider-like flavor to the beer if not cold-fermented or used in large quantities."
-      },
-      {
-        "name": "Cara-Pils/Dextrine",
-        "yield": 72.0,
-        "color": 2.0,
-        "type": "Grain",
-        "notes": "Significantly increases foam/head retention and body of the beer. Also sold under the names Dextrine and Cara-Foam"
-      },
-      {
-        "name": "Caraamber",
-        "yield": 75.0,
-        "color": 30.0,
-        "type": "Grain",
-        "notes": "Adds body, color and improves head retention. Also called Crystal malt."
-      },
-      {
-        "name": "Caraaroma",
-        "yield": 75.0,
-        "color": 130.0,
-        "type": "Grain",
-        "notes": "Very dark crystal malt - similar to a crystal 120 or Caramunich 120 malt. Adds strong caramel flavor, red color, and malty aroma."
-      },
-      {
-        "name": "Carafa I",
-        "yield": 70.0,
-        "color": 337.0,
-        "type": "Grain",
-        "notes": "Used to intensify aroma and color in dark, Munich beers and stouts."
-      },
-      {
-        "name": "Carafa II",
-        "yield": 70.0,
-        "color": 412.0,
-        "type": "Grain",
-        "notes": "Used to intensify aroma and color in dark, Munich beers and stouts."
-      },
-      {
-        "name": "Carafa III",
-        "yield": 70.0,
-        "color": 525.0,
-        "type": "Grain",
-        "notes": "Dark color and aroma - used in some German beers"
-      },
-      {
-        "name": "Carafoam",
-        "yield": 72.0,
-        "color": 2.0,
-        "type": "Grain",
-        "notes": "Significantly increases foam/head retention and body of the beer. Also sold under the names Dextrine and Cara-Pils (TM)"
-      },
-      {
-        "name": "Caramel Wheat Malt",
-        "yield": 75.0,
-        "color": 46.0,
-        "type": "Grain",
-        "notes": "Caramel wheat malt - emphasizes wheat malt aroma and adds color to the beer. Popular for Dunkelweizens. Also known as Carawheat."
-      },
-      {
-        "name": "Caramel/Crystal Malt - 10L",
-        "yield": 75.0,
-        "color": 10.0,
-        "type": "Grain",
-        "notes": "Adds body, color and improves head retention. Also called Crystal malt."
-      },
-      {
-        "name": "Caramel/Crystal Malt - 20L",
-        "yield": 75.0,
-        "color": 20.0,
-        "type": "Grain",
-        "notes": "Adds body, color and improves head retention. Also called Crystal malt."
-      },
-      {
-        "name": "Caramel/Crystal Malt - 60L",
-        "yield": 74.0,
-        "color": 60.0,
-        "type": "Grain",
-        "notes": "Adds body, color and improves head retention. Also called Crystal malt."
-      },
-      {
-        "name": "Chocolate Malt",
-        "yield": 60.0,
-        "color": 350.0,
-        "type": "Grain",
-        "notes": "Dark malt that gives a rich red or brown color and nutty flavor. Maintains some malty flavor, not as dark as roasted malt."
-      },
-      {
-        "name": "Corn Sugar (Dextrose)",
-        "yield": 100.0,
-        "color": 0.0,
-        "type": "Sugar",
-        "notes": "Widely used for bottling at rate of approx 2/3 cup per 5 gallons of beer"
-      },
-      {
-        "name": "Extra Light Dry Extract",
-        "yield": 95.0,
-        "color": 3.0,
-        "type": "Extract",
-        "notes": "Very light color dry malt extract for general purpose use. Use as base or to increase gravity of any ale or lager."
-      },
-      {
-        "name": "Honey",
-        "yield": 75.0,
-        "color": 1.0,
-        "type": "Adjunct",
-        "notes": "Can be used to lighten flavor and body when substituted for malt. Limit to 30% as adjunct. Pasturize and add to primary."
-      },
-      {
-        "name": "Munich Malt",
-        "yield": 80.0,
-        "color": 9.0,
-        "type": "Grain",
-        "notes": "Malty-sweet flavor characteristic and adds a reddish amber color to the beer. Use for: Bock, Porter, Marzen, Oktoberfest beers"
-      },
-      {
-        "name": "Roasted Barley",
-        "yield": 55.0,
-        "color": 300.0,
-        "type": "Grain",
-        "notes": "Roasted at high temperature to create a burnt, grainy, coffee like flavor. Imparts a red to deep brown color."
-      },
-      {
-        "name": "Vienna Malt",
-        "yield": 78.0,
-        "color": 3.5,
-        "type": "Grain",
-        "notes": "Kiln dried malt darker than Pale Malt, but not as dark as Munich Malt. Imparts a golden to orange color to the beer."
-      },
-      {
-        "name": "White Wheat Malt",
-        "yield": 86.0,
-        "color": 2.4,
-        "type": "Grain",
-        "notes": "White wheat gives a malty flavor not available from raw wheat. Used in Weiss, Wit and White beers"
-      },
-      {
-        "name": "Maltodextrin",
-        "yield": 75.0,
-        "color": 3.0,
-        "type": "Adjunct",
-        "notes": "Used to add mouthfeel to a beer. It is marked as non-fermentable as it is usually 97% unfermentable sugars."
-      }
+      {"name": "Amber Dry Extract", "yield": 95.0, "color": 12.5, "type": "Dry Extract"},
+      {"name": "Amber Liquid Extract", "yield": 78.0, "color": 12.5, "type": "Liquid Extract"},
+      {"name": "Pale Liquid Extract", "yield": 78.0, "color": 8.0, "type": "Liquid Extract"},
+      {"name": "Pilsner Liquid Extract", "yield": 78.0, "color": 3.5, "type": "Liquid Extract"},
+      {"name": "Dark Liquid Extract", "yield": 78.0, "color": 17.5, "type": "Liquid Extract"},
+      {"name": "Wheat Liquid Extract", "yield": 78.0, "color": 8.0, "type": "Liquid Extract"},
+      {"name": "Rice Extract Syrup", "yield": 69.6, "color": 7.0, "type": "Sugar"},
+      {"name": "Corn Sugar (Dextrose)", "yield": 100.0, "color": 0.0, "type": "Sugar"},
+      {"name": "Table Sugar (Sucrose)", "yield": 100.0, "color": 1.0, "type": "Sugar"},
+      {"name": "Honey", "yield": 75.0, "color": 1.0, "type": "Sugar"},
+      {"name": "Pale Malt (2 Row) US", "yield": 79.0, "color": 2.0, "type": "Grain"},
+      {"name": "Pale Malt (2 Row) UK", "yield": 78.0, "color": 3.0, "type": "Grain"},
+      {"name": "Pale Malt (2 Row) Bel", "yield": 80.0, "color": 3.0, "type": "Grain"},
+      {"name": "Pilsner (2 Row) Ger", "yield": 81.0, "color": 2.0, "type": "Grain"},
+      {"name": "Pilsner (2 Row) Bel", "yield": 79.0, "color": 2.0, "type": "Grain"},
+      {"name": "Vienna Malt", "yield": 78.0, "color": 3.5, "type": "Grain"},
+      {"name": "Munich Malt", "yield": 80.0, "color": 9.0, "type": "Grain"},
+      {"name": "Carapils/Dextrine", "yield": 72.0, "color": 2.0, "type": "Grain"},
+      {"name": "Crystal 10L", "yield": 75.0, "color": 10.0, "type": "Grain"},
+      {"name": "Crystal 20L", "yield": 75.0, "color": 20.0, "type": "Grain"},
+      {"name": "Crystal 40L", "yield": 74.0, "color": 40.0, "type": "Grain"},
+      {"name": "Crystal 60L", "yield": 74.0, "color": 60.0, "type": "Grain"},
+      {"name": "Crystal 120L", "yield": 72.0, "color": 120.0, "type": "Grain"},
+      {"name": "Chocolate Malt", "yield": 60.0, "color": 350.0, "type": "Grain"},
+      {"name": "Roasted Barley", "yield": 55.0, "color": 300.0, "type": "Grain"},
+      {"name": "Black Malt", "yield": 55.0, "color": 500.0, "type": "Grain"},
+      {"name": "Biscuit Malt", "yield": 79.0, "color": 23.0, "type": "Grain"},
+      {"name": "Victory Malt", "yield": 73.0, "color": 25.0, "type": "Grain"},
+      {"name": "Special B", "yield": 65.2, "color": 180.0, "type": "Grain"},
+      {"name": "Wheat Malt, Ger", "yield": 84.0, "color": 2.0, "type": "Grain"},
+      {"name": "Flaked Oats", "yield": 80.0, "color": 1.0, "type": "Grain"},
+      {"name": "Flaked Corn", "yield": 80.0, "color": 1.3, "type": "Grain"},
+      {"name": "Flaked Rice", "yield": 70.0, "color": 1.0, "type": "Grain"},
+      {"name": "Melanoidin Malt", "yield": 80.0, "color": 20.0, "type": "Grain"},
+      {"name": "Acid Malt", "yield": 58.7, "color": 3.0, "type": "Grain"}
     ]
   }
 }
