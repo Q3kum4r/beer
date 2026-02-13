@@ -2,70 +2,39 @@ import streamlit as st
 import json
 import re
 import os
-import sqlite3
-import hashlib
+import pandas as pd
 
-# --- KONFIGURACIJA STRANICE ---
-st.set_page_config(page_title="BrewMaster SaaS", layout="wide", page_icon="🍺")
+# --- KONFIGURACIJA ---
+st.set_page_config(page_title="BrewMaster Pro", layout="wide", page_icon="🍺")
 
-# --- DATABASE LOGIKA (SQLite) ---
-def init_db():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    # Tablica korisnika
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT)''')
-    # Tablica recepata
-    c.execute('''CREATE TABLE IF NOT EXISTS recipes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                  username TEXT, 
-                  recipe_name TEXT, 
-                  og TEXT, 
-                  ibu TEXT, 
-                  ebc TEXT, 
-                  abv TEXT,
-                  FOREIGN KEY(username) REFERENCES users(username))''')
-    conn.commit()
-    conn.close()
-
-def make_hashes(password):
-    return hashlib.sha256(str.encode(password)).hexdigest()
-
-def add_userdata(username, password):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    try:
-        c.execute('INSERT INTO users(username, password) VALUES (?,?)', (username, password))
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
-
-def login_user(username, password):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('SELECT * FROM users WHERE username =? AND password =?', (username, password))
-    data = c.fetchall()
-    conn.close()
-    return data
-
-def save_recipe(username, name, og, ibu, ebc, abv):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('INSERT INTO recipes(username, recipe_name, og, ibu, ebc, abv) VALUES (?,?,?,?,?,?)', 
-              (username, name, og, ibu, ebc, abv))
-    conn.commit()
-    conn.close()
-
-def get_user_recipes(username):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('SELECT recipe_name, og, ibu, ebc, abv FROM recipes WHERE username = ?', (username,))
-    data = c.fetchall()
-    conn.close()
-    return data
+# --- CSS ZA PROGRESS BAROVE (DA IZGLEDAJU KAO NA SLICI) ---
+st.markdown("""
+<style>
+    .metric-container {
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .bar-bg {
+        width: 100%;
+        background-color: #e0e0e0;
+        border-radius: 10px;
+        height: 20px;
+        margin-top: 5px;
+    }
+    .bar-fill {
+        height: 100%;
+        border-radius: 10px;
+        text-align: right;
+        padding-right: 5px;
+        color: white;
+        font-weight: bold;
+        line-height: 20px;
+        font-size: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # --- UČITAVANJE PODATAKA ---
 def clean_json_comments(text):
@@ -73,149 +42,247 @@ def clean_json_comments(text):
     return text.strip()
 
 @st.cache_data
-def load_all_databases():
+def load_data():
     hops, malts, styles, yeasts = [], [], [], []
-    if os.path.exists('bjcp_data.json'):
-        try:
+    try:
+        if os.path.exists('bjcp_data.json'):
             with open('bjcp_data.json', 'r', encoding='utf-8') as f:
-                data = json.loads(clean_json_comments(f.read()))
-                styles = data.get('beerjson', {}).get('styles', [])
-        except: pass
-    if os.path.exists('brew_data.json'):
-        try:
+                styles = json.loads(clean_json_comments(f.read())).get('beerjson', {}).get('styles', [])
+        if os.path.exists('brew_data.json'):
             with open('brew_data.json', 'r', encoding='utf-8') as f:
-                content = clean_json_comments(f.read())
-                full_data = json.loads(content).get('beerjson', {})
-                hops = full_data.get('hop_varieties', [])
-                yeasts = full_data.get('cultures', [])
-        except: pass
-    if os.path.exists('fermentables_data.json'):
-        try:
+                d = json.loads(clean_json_comments(f.read())).get('beerjson', {})
+                hops = d.get('hop_varieties', [])
+                yeasts = d.get('cultures', [])
+        if os.path.exists('fermentables_data.json'):
             with open('fermentables_data.json', 'r', encoding='utf-8') as f:
-                data = json.load(f).get('beerjson', {})
-                malts = data.get('fermentables', [])
-        except: pass
+                malts = json.load(f).get('beerjson', {}).get('fermentables', [])
+    except Exception as e:
+        st.error(f"Greška pri učitavanju podataka: {e}")
     return hops, malts, styles, yeasts
 
-def ebc_to_hex(ebc):
-    srm = ebc * 0.508
-    if srm < 2: return "#FFE699"
-    elif srm < 15: return "#FBB123"
-    elif srm < 40: return "#BD5400"
-    elif srm < 70: return "#420000"
-    return "#000000"
+hops_db, malts_db, styles_db, yeasts_db = load_data()
 
-# --- MAIN ---
-def main():
-    init_db()
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
+# --- INICIJALIZACIJA SESSION STATE ZA RECEPTE ---
+if 'recipe_malts' not in st.session_state:
+    st.session_state.recipe_malts = []
+if 'recipe_hops' not in st.session_state:
+    st.session_state.recipe_hops = []
 
-    if not st.session_state.logged_in:
-        st.title("🍺 BrewMaster SaaS Login")
-        auth_choice = st.sidebar.selectbox("Izbornik", ["Prijava", "Registracija"])
+# --- UI LOGIKA ---
+st.title("🍺 BrewMaster - Recipe Builder")
+
+# Gornji dio - Postavke
+with st.expander("⚙️ Postavke Opreme", expanded=True):
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    with col_s1: batch_size = st.number_input("Batch Size (L)", 20.0, step=1.0)
+    with col_s2: efficiency = st.number_input("Mash Efficiency (%)", 70.0, step=5.0)
+    with col_s3: boil_time = st.number_input("Vrijeme kuhanja (min)", 60, step=10)
+    with col_s4: 
+        style_list = [s['name'] for s in styles_db] if styles_db else ["N/A"]
+        target_style_name = st.selectbox("Ciljani Stil", style_list)
+        target_style = next((s for s in styles_db if s['name'] == target_style_name), {})
+
+# --- TABLICA SLADOVA ---
+st.subheader("🌾 Fermentables (Sastojci)")
+col_add_m1, col_add_m2 = st.columns([3, 1])
+with col_add_m1:
+    selected_malt_add = st.selectbox("Odaberi slad/ekstrakt za dodavanje:", [m['name'] for m in malts_db] if malts_db else [])
+with col_add_m2:
+    if st.button("➕ Dodaj Slad"):
+        malt_data = next((m for m in malts_db if m['name'] == selected_malt_add), None)
+        if malt_data:
+            # Dodajemo novi red u session state
+            st.session_state.recipe_malts.append({
+                "Name": malt_data['name'],
+                "Type": malt_data.get('type', 'Grain'),
+                "Amount (kg)": 1.0, # Default
+                "Yield (%)": float(malt_data.get('yield', 75)),
+                "Color (EBC)": float(malt_data.get('color', 0))
+            })
+
+# Prikaz i uređivanje tablice (Data Editor)
+if st.session_state.recipe_malts:
+    df_malts = pd.DataFrame(st.session_state.recipe_malts)
+    edited_malts = st.data_editor(
+        df_malts, 
+        num_rows="dynamic", 
+        use_container_width=True,
+        column_config={
+            "Amount (kg)": st.column_config.NumberColumn(min_value=0, max_value=50, step=0.1, format="%.2f kg"),
+            "Yield (%)": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
+            "Color (EBC)": st.column_config.NumberColumn(format="%.1f EBC", disabled=True),
+            "Type": st.column_config.TextColumn(disabled=True)
+        }
+    )
+    # Ažuriraj session state s novim vrijednostima iz tablice
+    st.session_state.recipe_malts = edited_malts.to_dict('records')
+else:
+    st.info("Dodaj sladove koristeći izbornik iznad.")
+
+# --- TABLICA HMELJEVA ---
+st.subheader("🌿 Hops (Hmeljevi)")
+col_add_h1, col_add_h2 = st.columns([3, 1])
+with col_add_h1:
+    selected_hop_add = st.selectbox("Odaberi hmelj:", [h['name'] for h in hops_db] if hops_db else [])
+with col_add_h2:
+    if st.button("➕ Dodaj Hmelj"):
+        hop_data = next((h for h in hops_db if h['name'] == selected_hop_add), None)
+        if hop_data:
+            aa = hop_data.get('alpha_acid', 5.0)
+            if isinstance(aa, dict): aa = aa.get('value', 5.0)
+            st.session_state.recipe_hops.append({
+                "Name": hop_data['name'],
+                "Amount (g)": 20.0,
+                "Time (min)": 60,
+                "Alpha (%)": float(aa),
+                "Use": "Boil"
+            })
+
+if st.session_state.recipe_hops:
+    df_hops = pd.DataFrame(st.session_state.recipe_hops)
+    edited_hops = st.data_editor(
+        df_hops,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Amount (g)": st.column_config.NumberColumn(min_value=0, max_value=500, step=1, format="%d g"),
+            "Time (min)": st.column_config.NumberColumn(min_value=0, max_value=120, step=5),
+            "Alpha (%)": st.column_config.NumberColumn(format="%.1f %%"),
+            "Use": st.column_config.SelectboxColumn(options=["Boil", "Dry Hop", "Mash", "Whirlpool"])
+        }
+    )
+    st.session_state.recipe_hops = edited_hops.to_dict('records')
+
+# --- KVASAC ---
+st.subheader("🧫 Kvasac")
+if yeasts_db:
+    producers = sorted(list(set([y.get('producer', 'Unknown') for y in yeasts_db])))
+    c_y1, c_y2 = st.columns(2)
+    with c_y1: sel_prod = st.selectbox("Proizvođač", producers)
+    
+    avail_yeasts = [y for y in yeasts_db if y.get('producer') == sel_prod]
+    with c_y2: sel_yeast_id = st.selectbox("Soj", [y.get('product_id', 'N/A') for y in avail_yeasts])
+    
+    current_yeast = next((y for y in avail_yeasts if y.get('product_id') == sel_yeast_id), {})
+    
+    # Atenuacija
+    att_range = current_yeast.get('attenuation_range', {})
+    att_min = float(att_range.get('minimum', {}).get('value', 70))
+    att_max = float(att_range.get('maximum', {}).get('value', 80))
+    attenuation = (att_min + att_max) / 2
+    st.caption(f"{current_yeast.get('name')} | Avg. Attenuation: {attenuation}%")
+else:
+    attenuation = 75.0
+
+# --- KALKULACIJE ---
+total_points = 0
+total_mcu = 0
+
+for m in st.session_state.recipe_malts:
+    w_kg = m['Amount (kg)']
+    yield_pct = m['Yield (%)']
+    color = m['Color (EBC)']
+    m_type = m['Type'].lower()
+    
+    # Ako je ekstrakt ili šećer, efikasnost je 100%, inače koristimo zadanu efikasnost
+    item_eff = 100 if ('extract' in m_type or 'sugar' in m_type) else efficiency
+    
+    # Formula: kg * (Yield% / 100) * 384 (pts/kg/L) * (Eff / 100)
+    # Rezultat je u Gravity Points * L
+    points = w_kg * (yield_pct / 100) * 384 * (item_eff / 100)
+    total_points += points
+    
+    total_mcu += (w_kg * color) / batch_size
+
+# OG
+if batch_size > 0:
+    og = 1 + (total_points / batch_size) / 1000
+else:
+    og = 1.0
+
+# FG
+fg = 1 + ((og - 1) * (1 - (attenuation / 100)))
+
+# ABV
+abv = (og - fg) * 131.25
+
+# EBC
+ebc = 1.4922 * (total_mcu ** 0.6859) * 1.97 # Dodatni faktor za usklađivanje s modernim formulama
+
+# IBU
+total_ibu = 0
+for h in st.session_state.recipe_hops:
+    if h['Use'] == "Boil":
+        w_g = h['Amount (g)']
+        alpha = h['Alpha (%)']
+        time = h['Time (min)']
         
-        if auth_choice == "Registracija":
-            new_user = st.text_input("Korisničko ime")
-            new_pass = st.text_input("Lozinka", type='password')
-            if st.button("Kreiraj račun"):
-                if add_userdata(new_user, make_hashes(new_pass)):
-                    st.success("Registracija uspješna! Prijavi se.")
-                else: st.error("Korisnik već postoji.")
-        else:
-            user = st.text_input("Korisničko ime")
-            pw = st.text_input("Lozinka", type='password')
-            if st.button("Prijavi se"):
-                if login_user(user, make_hashes(pw)):
-                    st.session_state.logged_in = True
-                    st.session_state.username = user
-                    st.rerun()
-                else: st.error("Pogrešni podaci.")
-    else:
-        # APLIKACIJA ZA PRIJAVLJENE
-        hops_db, malts_db, styles_db, yeasts_db = load_all_databases()
+        # Tinseth
+        if batch_size > 0:
+            gravity_factor = 1.65 * (0.000125 ** (og - 1))
+            time_factor = (1 - 2.71828 ** (-0.04 * time)) / 4.15
+            utilization = gravity_factor * time_factor
+            ibu = (w_g * alpha * utilization * 10) / batch_size
+            total_ibu += ibu
+
+# --- VIZUALNI REZULTATI (DASHBOARD) ---
+st.divider()
+st.subheader("📊 Analiza Recepta")
+
+# Funkcija za progress bar
+def custom_bar(label, value, min_v, max_v, unit, color_gradient):
+    pct = max(0, min(100, (value - min_v) / (max_v - min_v) * 100)) if max_v > min_v else 0
+    st.markdown(f"""
+    <div style="margin-bottom: 10px;">
+        <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:bold;">
+            <span>{label}</span>
+            <span>{value:.3f} {unit}</span>
+        </div>
+        <div style="width:100%; background-color:#ddd; height:20px; border-radius:10px; overflow:hidden;">
+            <div style="width:{pct}%; background:{color_gradient}; height:100%; text-align:right; padding-right:5px; line-height:20px; color:white; font-size:12px;">
+            </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:#666;">
+            <span>{min_v}</span>
+            <span>{max_v}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Dohvati granice stila
+s_og_min = float(target_style.get('original_gravity', {}).get('minimum', {}).get('value', 1.000))
+s_og_max = float(target_style.get('original_gravity', {}).get('maximum', {}).get('value', 1.100))
+s_fg_min = float(target_style.get('final_gravity', {}).get('minimum', {}).get('value', 1.000))
+s_fg_max = float(target_style.get('final_gravity', {}).get('maximum', {}).get('value', 1.030))
+s_abv_min = float(target_style.get('alcohol_by_volume', {}).get('minimum', {}).get('value', 0))
+s_abv_max = float(target_style.get('alcohol_by_volume', {}).get('maximum', {}).get('value', 12))
+s_ibu_min = float(target_style.get('international_bitterness_units', {}).get('minimum', {}).get('value', 0))
+s_ibu_max = float(target_style.get('international_bitterness_units', {}).get('maximum', {}).get('value', 100))
+s_col_min = float(target_style.get('color', {}).get('minimum', {}).get('value', 0))
+s_col_max = float(target_style.get('color', {}).get('maximum', {}).get('value', 40))
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    custom_bar("Original Gravity", og, s_og_min - 0.010, s_og_max + 0.010, "", "linear-gradient(90deg, #a8e063, #56ab2f)")
+    custom_bar("Final Gravity", fg, s_fg_min - 0.005, s_fg_max + 0.005, "", "linear-gradient(90deg, #a8e063, #56ab2f)")
+
+with c2:
+    custom_bar("Alcohol (ABV)", abv, s_abv_min - 1, s_abv_max + 2, "%", "linear-gradient(90deg, #4facfe, #00f2fe)")
+    custom_bar("Bitterness (IBU)", total_ibu, 0, s_ibu_max + 20, "IBU", "linear-gradient(90deg, #43e97b, #38f9d7)")
+
+with c3:
+    # Boja - poseban tretman
+    def get_hex(e):
+        s = e * 0.508
+        if s<2: return "#FFE699"
+        if s<6: return "#FFD878"
+        if s<12: return "#FBB123"
+        if s<20: return "#EA8F00"
+        if s<30: return "#D36E00"
+        if s<40: return "#8F3300"
+        return "#260000"
         
-        with st.sidebar:
-            st.title(f"Živjeli, {st.session_state.username}!")
-            if st.button("Odjavi se"):
-                st.session_state.logged_in = False
-                st.rerun()
-            st.divider()
-            batch_size = st.number_input("Batch (L)", value=20.0)
-            efficiency = st.slider("Efikasnost (%)", 40, 100, 75)
-            style_name = st.selectbox("BJCP Stil", [s['name'] for s in styles_db])
-            selected_style = next((s for s in styles_db if s['name'] == style_name), {})
-
-        tab_recipe, tab_my_recipes = st.tabs(["🆕 Novi Recept", "📚 Moja Knjižnica"])
-
-        with tab_recipe:
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.subheader("🌾 Grain Bill & Hops")
-                m_selection = st.multiselect("Sladovi (kg):", [m['name'] for m in malts_db])
-                total_gravity_pts, total_mcu = 0, 0
-                for nm in m_selection:
-                    m_info = next(m for m in malts_db if m['name'] == nm)
-                    w = st.number_input(f"kg: {nm}", value=1.0, min_value=0.0, step=0.1, key=f"m_{nm}")
-                    yield_pct = float(m_info.get('yield', 75.0))
-                    total_gravity_pts += (w * (yield_pct/100*384) * (100 if "Extract" in nm else efficiency)/100) / batch_size
-                    total_mcu += (w * float(m_info.get('color', 0))) / batch_size
-
-                h_selection = st.multiselect("Hmeljevi (g):", [h['name'] for h in hops_db])
-                active_hops_list = []
-                for nh in h_selection:
-                    h_info = next(h for h in hops_db if h['name'] == nh)
-                    aa = float(h_info.get('alpha_acid', {}).get('value', 5.0))
-                    g = st.number_input(f"g: {nh}", value=20.0, min_value=0.0, step=1.0, key=f"h_{nh}")
-                    active_hops_list.append((g, aa))
-
-                if yeasts_db:
-                    y_name = st.selectbox("Kvasac:", [y['name'] for y in yeasts_db])
-                    selected_yeast = next(y for y in yeasts_db if y['name'] == y_name)
-                    att_range = selected_yeast.get('attenuation_range', {})
-                    attenuation = (float(att_range.get('minimum', {}).get('value', 70)) + float(att_range.get('maximum', {}).get('value', 80))) / 2
-                else: attenuation = 75.0
-
-            # IZRAČUN
-            og = 1 + (total_gravity_pts / 1000)
-            fg = 1 + ((og - 1) * (1 - (attenuation / 100.0)))
-            abv = (og - fg) * 131.25
-            ebc = int((1.4922 * ((total_mcu/1.97)**0.6859)) * 1.97) if total_mcu > 0 else 0
-            
-            total_ibu = 0
-            for g, aa in active_hops_list:
-                f_og = 1.65 * (0.000125**(og - 1))
-                f_time = (1 - 2.718**(-0.04 * 60)) / 4.15
-                total_ibu += (g * aa * (f_og * f_time) * 10) / batch_size
-
-            with col2:
-                st.subheader("📊 Analiza")
-                st.metric("ABV", f"{abv:.1f} %")
-                st.metric("OG", f"{og:.3f}")
-                st.metric("IBU", f"{int(total_ibu)}")
-                st.metric("EBC", f"{ebc}")
-                st.markdown(f'<div style="width: 100%; height: 40px; background-color: {ebc_to_hex(ebc)}; border-radius: 5px; border: 1px solid #555;"></div>', unsafe_allow_html=True)
-                
-                st.divider()
-                recipe_save_name = st.text_input("Naziv recepta za spremanje")
-                if st.button("💾 Spremi Recept"):
-                    if recipe_save_name:
-                        save_recipe(st.session_state.username, recipe_save_name, f"{og:.3f}", str(int(total_ibu)), str(ebc), f"{abv:.1f}")
-                        st.success(f"Recept '{recipe_save_name}' je spremljen!")
-                    else: st.warning("Unesi naziv recepta.")
-
-        with tab_my_recipes:
-            st.subheader("📜 Moji spremljeni recepti")
-            user_recipes = get_user_recipes(st.session_state.username)
-            if user_recipes:
-                for r in user_recipes:
-                    with st.expander(f"🍺 {r[0]}"):
-                        c1, c2, c3, c4 = st.columns(4)
-                        c1.write(f"**OG:** {r[1]}")
-                        c2.write(f"**IBU:** {r[2]}")
-                        c3.write(f"**EBC:** {r[3]}")
-                        c4.write(f"**ABV:** {r[4]}%")
-            else: st.info("Još nemaš spremljenih recepata.")
-
-if __name__ == '__main__':
-    main()
+    beer_color = get_hex(ebc)
+    custom_bar("Color (EBC)", ebc, 0, 80, "EBC", beer_color)
+    st.write(f"Stil: {s_col_min}-{s_col_max} EBC")
